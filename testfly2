@@ -1,0 +1,95 @@
+local clientData = require(game.ReplicatedStorage.ClientModules.Core.ClientData)
+
+local function getPlayerData()
+    return clientData.get_data()[tostring(game.Players.LocalPlayer)]
+end
+
+local function getRidePotions()
+    local potions = {}
+    for _, item in pairs(getPlayerData().inventory.food or {}) do
+        if item.kind == "pet_riding_potion" then
+            table.insert(potions, item)
+        end
+    end
+    return potions
+end
+
+local function getFlyPotions()
+    local potions = {}
+    for _, item in pairs(getPlayerData().inventory.food or {}) do
+        if item.kind == "pet_flying_potion" then
+            table.insert(potions, item)
+        end
+    end
+    return potions
+end
+
+local function getMegaNeonUnicornsNeedUpgrade()
+    local pets = {}
+
+    for _, pet in pairs(getPlayerData().inventory.pets or {}) do
+        local props = pet.properties or {}
+
+        if pet.kind == "unicorn"
+            and props.mega_neon
+            and (not props.flyable or not props.rideable) then
+            table.insert(pets, pet)
+        end
+    end
+
+    return pets
+end
+
+local function printOneStep(step)
+    local pets = getMegaNeonUnicornsNeedUpgrade()
+    local flyPotions = getFlyPotions()
+    local ridePotions = getRidePotions()
+
+    print("========== STEP " .. step .. " ==========")
+
+    local pet = pets[1]
+    local flyPotion = flyPotions[1]
+    local ridePotion = ridePotions[1]
+
+    if pet then
+        local props = pet.properties or {}
+        print("PET:")
+        print(
+            "unique:", pet.unique,
+            "| kind:", pet.kind,
+            "| mega_neon:", tostring(props.mega_neon),
+            "| flyable:", tostring(props.flyable),
+            "| rideable:", tostring(props.rideable)
+        )
+    else
+        print("PET: not found")
+    end
+
+    if flyPotion then
+        print("FLY POTION:")
+        print("unique:", flyPotion.unique, "| kind:", flyPotion.kind)
+    else
+        print("FLY POTION: not found")
+    end
+
+    if ridePotion then
+        print("RIDE POTION:")
+        print("unique:", ridePotion.unique, "| kind:", ridePotion.kind)
+    else
+        print("RIDE POTION: not found")
+    end
+
+    print("TOTALS:")
+    print("Pets need upgrade:", #pets)
+    print("Fly potions:", #flyPotions)
+    print("Ride potions:", #ridePotions)
+    print("================================")
+end
+
+local step = 1
+
+while true do
+    printOneStep(step)
+    step += 1
+    task.wait(2)
+end
