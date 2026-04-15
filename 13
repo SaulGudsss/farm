@@ -1,0 +1,140 @@
+local clientData = require(game.ReplicatedStorage.ClientModules.Core.ClientData)
+
+local function getPlayerData()
+    return clientData.get_data()[tostring(game.Players.LocalPlayer)]
+end
+
+local function getRidePotions()
+    local potions = {}
+    for _, item in pairs(getPlayerData().inventory.food or {}) do
+        if item.kind == "pet_riding_potion" then
+            table.insert(potions, item)
+        end
+    end
+    return potions
+end
+
+local function getFlyPotions()
+    local potions = {}
+    for _, item in pairs(getPlayerData().inventory.food or {}) do
+        if item.kind == "pet_flying_potion" then
+            table.insert(potions, item)
+        end
+    end
+    return potions
+end
+
+local function getMegaNeonUnicornsNeedUpgrade()
+    local pets = {}
+    for _, pet in pairs(getPlayerData().inventory.pets or {}) do
+        local props = pet.properties or {}
+        if pet.kind == "unicorn" 
+           and props.mega_neon 
+           and (not props.flyable or not props.rideable) then
+            table.insert(pets, pet)
+        end
+    end
+    return pets
+end
+
+-- БЫСТРОЕ СКУШАНИЕ ИЗ ТВОЕГО СКРИПТА
+local function quickConsume(petUnique)
+    local petModel
+    for _ = 1, 50 do
+        local found = workspace:WaitForChild("PetObjects"):FindFirstChildWhichIsA("Model")
+        if found then
+            petModel = found
+            break
+        end
+        task.wait(0.05)
+    end
+
+    if petModel then
+        game.ReplicatedStorage.API["PetAPI/ConsumeFoodObject"]:FireServer(petModel, petUnique)
+        return true
+    end
+    return false
+end
+
+-- Получаем списки ОДИН РАЗ
+local megaNeonUnicorns = getMegaNeonUnicornsNeedUpgrade()
+local flyPotions = getFlyPotions()
+local ridePotions = getRidePotions()
+
+print("Mega neon unicorns:", #megaNeonUnicorns)
+print("Fly potions:", #flyPotions, "Ride potions:", #ridePotions)
+
+-- Цикл по КАЖДОМУ питомцу
+for i, pet in ipairs(megaNeonUnicorns) do
+    local props = pet.properties or {}
+    
+    print("PET", i, pet.unique, "fly:", props.flyable, "ride:", props.rideable)
+    
+    local flyPotion = flyPotions[i]
+    local ridePotion = ridePotions[i]
+    
+    -- Fly potion если нужен
+    if not props.flyable and flyPotion then
+        print("  → FLY", flyPotion.unique)
+        game.ReplicatedStorage.API["ToolAPI/Equip"]:InvokeServer(pet.unique, {use_sound_delay = true})
+        game.ReplicatedStorage.API["ToolAPI/Equip"]:InvokeServer(flyPotion.unique, {use_sound_delay = true})
+        task.wait(0.2)
+        
+        local ok = pcall(function()
+            game.ReplicatedStorage.API["PetObjectAPI/CreatePetObject"]:InvokeServer(
+                "__Enum_PetObjectCreatorType_2",
+                {
+                    additional_consume_uniques = {},
+                    pet_unique = pet.unique,
+                    unique_id = flyPotion.unique
+                }
+            )
+        end)
+        
+        if ok then
+            quickConsume(pet.unique) -- БЫСТРОЕ СКУШАНИЕ
+        end
+        task.wait(2)
+    end
+    
+    -- Ride potion если нужен
+    if not props.rideable and ridePotion then
+        print("  → RIDE", ridePotion.unique)
+        game.ReplicatedStorage.API["ToolAPI/Equip"]:InvokeServer(pet.unique, {use_sound_delay = true})
+        game.ReplicatedStorage.API["ToolAPI/Equip"]:InvokeServer(ridePotion.unique, {use_sound_delay = true})
+        task.wait(0.2)
+        
+        local ok = pcall(function()
+            game.ReplicatedStorage.API["PetObjectAPI/CreatePetObject"]:InvokeServer(
+                "__Enum_PetObjectCreatorType_2",
+                {
+                    additional_consume_uniques = {},
+                    pet_unique = pet.unique,
+                    unique_id = ridePotion.unique
+                }
+            )
+        end)
+        
+        if ok then
+            quickConsume(pet.unique) -- БЫСТРОЕ СКУШАНИЕ
+        end
+        task.wait(2)
+    end
+    
+    print("---\n")
+end
+
+print("DONE!")
+
+Complete = true
+
+-- Счетчик
+local playerData = getPlayerData()
+local petCounts = {}
+for _, pet in pairs(playerData.inventory.pets or {}) do
+    petCounts[pet.kind] = (petCounts[pet.kind] or 0) + 1
+end
+print("PET COUNTS:")
+for kind, count in pairs(petCounts) do
+    print(kind, count)
+end
