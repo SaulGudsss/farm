@@ -1,0 +1,172 @@
+local clientData = require(game.ReplicatedStorage.ClientModules.Core.ClientData)
+
+local function getPlayerData()
+    return clientData.get_data()[tostring(game.Players.LocalPlayer)]
+end
+
+local function getAgePotions()
+    local potions = {}
+    for _, item in pairs(getPlayerData().inventory.food or {}) do
+        if item.kind == "pet_age_potion" then
+            table.insert(potions, item)
+        end
+    end
+    return potions
+end
+
+local function getPets(petNames)
+    local pets = {}
+    for _, target in ipairs(petNames) do
+        for _, pet in pairs(getPlayerData().inventory.pets or {}) do
+            if pet.kind == target 
+               and pet.properties.age < 6 
+               and not pet.properties.mega_neon 
+               and not pet.properties.neon then
+                table.insert(pets, pet)
+            end
+        end
+        if #pets > 0 then return pets end
+    end
+
+    for _, target in ipairs(petNames) do
+        for _, pet in pairs(getPlayerData().inventory.pets or {}) do
+            if pet.kind == target 
+               and pet.properties.age < 6 
+               and not pet.properties.mega_neon 
+               and pet.properties.neon then
+                table.insert(pets, pet)
+            end
+        end
+        if #pets > 0 then return pets end
+    end
+
+    return pets
+end
+
+local function waitForPetAge(unique, timeout)
+    timeout = timeout or 3 -- Уменьшил таймаут
+    local targetAge = 6
+    local t0 = os.clock()
+
+    while os.clock() - t0 < timeout do
+        local inv = getPlayerData().inventory
+        for _, pet in pairs(inv and inv.pets or {}) do
+            if pet.unique == unique then
+                local age = (pet.properties and pet.properties.age) or 0
+                if age >= targetAge then
+                    return true
+                end
+                break
+            end
+        end
+        task.wait(0.05) -- Уменьшил интервал проверки
+    end
+    return false
+end
+
+-- Функция для обработки одного питомца (для параллельной работы)
+local function processPet(selectedPet, selectedPotions, PerPotion)
+    game.ReplicatedStorage.API["ToolAPI/Equip"]:InvokeServer(selectedPet.unique, {use_sound_delay = true})
+    game.ReplicatedStorage.API["ToolAPI/Equip"]:InvokeServer(selectedPotions[1].unique, {use_sound_delay = true})
+    task.wait(0.1) -- Уменьшил задержку
+
+    local potionUniques = {}
+    for i = 1, PerPotion - 1 do
+        table.insert(potionUniques, selectedPotions[i].unique)
+    end
+
+    local ok, err = pcall(function()
+        game.ReplicatedStorage.API["PetObjectAPI/CreatePetObject"]:InvokeServer(
+            "__Enum_PetObjectCreatorType_2",
+            {
+                additional_consume_uniques = potionUniques,
+                pet_unique = selectedPet.unique,
+                unique_id = selectedPotions[PerPotion].unique
+            }
+        )
+    end)
+    
+    if ok then
+        -- Быстрый поиск petModel
+        local petModel
+        for _ = 1, 20 do -- Уменьшил количество попыток
+            local found = workspace:WaitForChild("PetObjects"):FindFirstChildWhichIsA("Model")
+            if found then
+                petModel = found
+                break
+            end
+            task.wait(0.03) -- Уменьшил задержку
+        end
+
+        if petModel then
+            game.ReplicatedStorage.API["PetAPI/ConsumeFoodObject"]:FireServer(petModel, selectedPet.unique)
+            waitForPetAge(selectedPet.unique)
+        end
+    end
+    
+    return ok
+end
+
+-- ГЛАВНЫЙ ЦИКЛ С ПАРАЛЛЕЛЬНОЙ ОБРАБОТКОЙ
+local MAX_CONCURRENT = 3 -- Максимум одновременных питомцев (настрой под свой ПК/сервер)
+local processedCount = 0
+
+while true do
+    local agePotions = getAgePotions()
+    local pets = getPets(petName)
+
+    if #agePotions < PerPotion then
+        break
+    end
+
+    if #pets == 0 then
+        break
+    end
+
+    print("Processing batch:", #pets, "pets,", #agePotions, "potions")
+
+    -- Создаем задачи для параллельной обработки
+    local tasks = {}
+    local batchSize = math.min(#pets, MAX_CONCURRENT)
+    
+    for i = 1, batchSize do
+        if #agePotions >= PerPotion then
+            local selectedPet = table.remove(pets, 1)
+            local selectedPotions = {}
+            for j = 1, PerPotion do
+                table.insert(selectedPotions, table.remove(agePotions, 1))
+            end
+            
+            -- Запускаем в отдельной задаче
+            task.spawn(function()
+                local success = processPet(selectedPet, selectedPotions, PerPotion)
+                if success then
+                    processedCount = processedCount + 1
+                    print("Pet processed successfully! Total:", processedCount)
+                end
+            end)
+        end
+    end
+    
+    -- Ждем немного перед следующей партией
+    task.wait(0.5)
+end
+
+print("Ageup completed! Processed", processedCount, "pets")
+
+-- Счетчик питомцев
+Complete = true
+
+local playerData = getPlayerData()
+local petCounts = {}
+
+for _, pet in pairs(playerData.inventory.pets or {}) do
+    local kind = pet.kind
+    petCounts[kind] = (petCounts[kind] or 0) + 1
+end
+
+print("=== FINAL PET COUNTS ===")
+for kind, count in pairs(petCounts) do
+    print(kind .. " - " .. count)
+end
+print("========================")
