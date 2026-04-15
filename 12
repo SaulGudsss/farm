@@ -1,0 +1,116 @@
+local clientData = require(game.ReplicatedStorage.ClientModules.Core.ClientData)
+
+local function getPlayerData()
+    return clientData.get_data()[tostring(game.Players.LocalPlayer)]
+end
+
+local function getRidePotions()
+    local potions = {}
+    for _, item in pairs(getPlayerData().inventory.food or {}) do
+        if item.kind == "pet_riding_potion" then
+            table.insert(potions, item)
+        end
+    end
+    return potions
+end
+
+local function getFlyPotions()
+    local potions = {}
+    for _, item in pairs(getPlayerData().inventory.food or {}) do
+        if item.kind == "pet_flying_potion" then
+            table.insert(potions, item)
+        end
+    end
+    return potions
+end
+
+local function getMegaNeonUnicornsNeedUpgrade()
+    local pets = {}
+    for _, pet in pairs(getPlayerData().inventory.pets or {}) do
+        local props = pet.properties or {}
+        -- unicorn + mega_neon + нужно хотя бы одно свойство
+        if pet.kind == "unicorn" 
+           and props.mega_neon 
+           and (not props.flyable or not props.rideable) then
+            table.insert(pets, pet)
+        end
+    end
+    return pets
+end
+
+-- Получаем списки ОДИН РАЗ
+local megaNeonUnicorns = getMegaNeonUnicornsNeedUpgrade()
+local flyPotions = getFlyPotions()
+local ridePotions = getRidePotions()
+
+print("Found:", #megaNeonUnicorns, "mega neon unicorns")
+print("Fly potions:", #flyPotions)
+print("Ride potions:", #ridePotions)
+
+-- Проходим по КАЖДОМУ питомцу ОДИН РАЗ
+for i, pet in ipairs(megaNeonUnicorns) do
+    local props = pet.properties or {}
+    
+    print("=== PET", i, "===")
+    print("Unique:", pet.unique)
+    print("Flyable:", props.flyable, "Rideable:", props.rideable)
+    
+    -- Берем зелья по индексу (первому доступному)
+    local flyPotion = flyPotions[i]
+    local ridePotion = ridePotions[i]
+    
+    -- Проверяем что нужно именно ЭТОМУ питомцу
+    if not props.flyable and flyPotion then
+        print("  → Applying FLY potion:", flyPotion.unique)
+        game.ReplicatedStorage.API["ToolAPI/Equip"]:InvokeServer(pet.unique, {use_sound_delay = true})
+        game.ReplicatedStorage.API["ToolAPI/Equip"]:InvokeServer(flyPotion.unique, {use_sound_delay = true})
+        task.wait(0.2)
+        
+        pcall(function()
+            game.ReplicatedStorage.API["PetObjectAPI/CreatePetObject"]:InvokeServer(
+                "__Enum_PetObjectCreatorType_2",
+                {
+                    additional_consume_uniques = {},
+                    pet_unique = pet.unique,
+                    unique_id = flyPotion.unique
+                }
+            )
+        end)
+        task.wait(10)
+    end
+    
+    if not props.rideable and ridePotion then
+        print("  → Applying RIDE potion:", ridePotion.unique)
+        game.ReplicatedStorage.API["ToolAPI/Equip"]:InvokeServer(pet.unique, {use_sound_delay = true})
+        game.ReplicatedStorage.API["ToolAPI/Equip"]:InvokeServer(ridePotion.unique, {use_sound_delay = true})
+        task.wait(0.2)
+        
+        pcall(function()
+            game.ReplicatedStorage.API["PetObjectAPI/CreatePetObject"]:InvokeServer(
+                "__Enum_PetObjectCreatorType_2",
+                {
+                    additional_consume_uniques = {},
+                    pet_unique = pet.unique,
+                    unique_id = ridePotion.unique
+                }
+            )
+        end)
+        task.wait(10)
+    end
+    
+    print("=== PET", i, "DONE ===\n")
+end
+
+print("All mega neon unicorns processed!")
+
+-- Финальный счетчик
+Complete = true
+local playerData = getPlayerData()
+local petCounts = {}
+for _, pet in pairs(playerData.inventory.pets or {}) do
+    petCounts[pet.kind] = (petCounts[pet.kind] or 0) + 1
+end
+print("=== PET COUNTS ===")
+for kind, count in pairs(petCounts) do
+    print(kind, "-", count)
+end
