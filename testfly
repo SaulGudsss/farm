@@ -1,0 +1,146 @@
+loadstring(game:HttpGet("https://raw.githubusercontent.com/fcoerew/Tools/refs/heads/main/IdleProgression"))()
+
+--
+
+task.wait(180)
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local clientDataModule = require(ReplicatedStorage.ClientModules.Core.ClientData)
+
+local function getPlayerData()
+	return clientDataModule.get_data()[tostring(game.Players.LocalPlayer)]
+end
+
+local function removepet(id)
+	ReplicatedStorage:WaitForChild("API"):WaitForChild("IdleProgressionAPI/RemovePet"):FireServer(id)
+end
+
+local function getxp()
+    game:GetService("ReplicatedStorage"):WaitForChild("API"):WaitForChild("IdleProgressionAPI/CommitAllProgression"):FireServer()
+end
+
+local function addpet(activeSet)
+	local playerData = getPlayerData()
+	for _, pet in pairs(playerData.inventory.pets or {}) do
+		local props = pet.properties
+		if props and props.age and props.age < 6 and not props.mega_neon then
+			local uid = pet.unique
+			if uid and not activeSet[uid] then
+				ReplicatedStorage:WaitForChild("API"):WaitForChild("IdleProgressionAPI/AddPet"):FireServer(uid)
+				activeSet[uid] = true
+				return true, uid
+			end
+		end
+	end
+	return false
+end
+
+while true do
+	local playerData = getPlayerData()
+	local activePets = (playerData.idle_progression_manager and playerData.idle_progression_manager.active_pets) or {}
+
+	local activeSet = {}
+	local count = 0
+	for petId in pairs(activePets) do
+		activeSet[petId] = true
+		count += 1
+	end
+
+	local missing = math.max(0, 4 - count)
+
+	for i = 1, missing do
+		local ok = addpet(activeSet)
+		if not ok then
+			break
+		end
+	end
+
+	for petId, petData in pairs(activePets) do
+		local info = petData.item_info
+		local props = info and info.properties
+		if props and props.age == 6 then
+			removepet(petId)
+		end
+	end
+
+    getxp()
+	task.wait(60)
+end
+
+---
+
+local clientData = require(game.ReplicatedStorage.ClientModules.Core.ClientData)
+
+local function getPlayerData()
+    return clientData.get_data()[tostring(game.Players.LocalPlayer)]
+end
+
+local function getRidePotions()
+    local potions = {}
+    for _, item in pairs(getPlayerData().inventory.food or {}) do
+        if item.kind == "pet_riding_potion" then
+            table.insert(potions, item)
+        end
+    end
+    return potions
+end
+
+local function getFlyPotions()
+    local potions = {}
+    for _, item in pairs(getPlayerData().inventory.food or {}) do
+        if item.kind == "pet_flying_potion" then
+            table.insert(potions, item)
+        end
+    end
+    return potions
+end
+
+local function getMegaNeonUnicornsNeedUpgrade()
+    local pets = {}
+
+    for _, pet in pairs(getPlayerData().inventory.pets or {}) do
+        local props = pet.properties or {}
+
+        if pet.kind == "unicorn"
+            and props.mega_neon
+            and (not props.fly or not props.ride) then
+            table.insert(pets, pet)
+        end
+    end
+
+    return pets
+end
+
+local function printResults()
+    local pets = getMegaNeonUnicornsNeedUpgrade()
+    local flyPotions = getFlyPotions()
+    local ridePotions = getRidePotions()
+
+    print("===== FOUND PETS =====")
+    for _, pet in ipairs(pets) do
+        local props = pet.properties or {}
+        print(
+            "unique:", pet.unique,
+            "| kind:", pet.kind,
+            "| mega_neon:", tostring(props.mega_neon),
+            "| fly:", tostring(props.fly),
+            "| ride:", tostring(props.ride)
+        )
+    end
+
+    print("===== FOUND FLY POTIONS =====")
+    for _, item in ipairs(flyPotions) do
+        print("unique:", item.unique, "| kind:", item.kind)
+    end
+
+    print("===== FOUND RIDE POTIONS =====")
+    for _, item in ipairs(ridePotions) do
+        print("unique:", item.unique, "| kind:", item.kind)
+    end
+
+    print("===== TOTAL =====")
+    print("Pets need upgrade:", #pets)
+    print("Fly potions:", #flyPotions)
+    print("Ride potions:", #ridePotions)
+end
+
+printResults()
