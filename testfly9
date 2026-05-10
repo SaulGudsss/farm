@@ -1,0 +1,152 @@
+local clientData = require(game.ReplicatedStorage.ClientModules.Core.ClientData)
+
+local function getPlayerData()
+    return clientData.get_data()[tostring(game.Players.LocalPlayer)]
+end
+
+local function getRidePotions()
+    local potions = {}
+    for _, item in pairs(getPlayerData().inventory.food or {}) do
+        if item.kind == "pet_riding_potion" then
+            table.insert(potions, item)
+        end
+    end
+    return potions
+end
+
+local function getFlyPotions()
+    local potions = {}
+    for _, item in pairs(getPlayerData().inventory.food or {}) do
+        if item.kind == "pet_flying_potion" then
+            table.insert(potions, item)
+        end
+    end
+    return potions
+end
+
+local function getMegaNeonUnicornsNeedUpgrade()
+    local pets = {}
+    for _, pet in pairs(getPlayerData().inventory.pets or {}) do
+        local props = pet.properties or {}
+        if pet.kind == "unicorn" and props.mega_neon and (not props.flyable or not props.rideable) then
+            table.insert(pets, pet)
+        end
+    end
+    return pets
+end
+
+local function applyPotion(pet, potion, potionType)
+    if not potion then
+        print(potionType .. " potion: не нужен или нет в инвентаре")
+        return true -- не ошибка, просто пропускаем
+    end
+
+    print("=== " .. potionType:upper() .. " POTION ===")
+    print("  unique:", potion.unique)
+
+    game.ReplicatedStorage.API["ToolAPI/Equip"]:InvokeServer(potion.unique, {use_sound_delay = true})
+    task.wait(0.5) -- увеличен для надёжности
+
+    local ok, err = pcall(function()
+        game.ReplicatedStorage.API["PetObjectAPI/CreatePetObject"]:InvokeServer(
+            "__Enum_PetObjectCreatorType_2",
+            {
+                additional_consume_uniques = {},
+                pet_unique = pet.unique,
+                unique_id = potion.unique
+            }
+        )
+    end)
+
+    if not ok then
+        warn(potionType .. " potion failed:", err)
+        return false
+    end
+
+    print(potionType .. " potion applied successfully!")
+    task.wait(7) -- увеличен с 5 до 7 для надёжности
+    return true
+end
+
+local function ageup(pet, flyPotion, ridePotion)
+    if not pet then
+        warn("[ageup] pet is nil")
+        return false
+    end
+
+    local props = pet.properties or {}
+
+    -- Проверяем что реально нужно
+    local needFly = not props.flyable and flyPotion ~= nil
+    local needRide = not props.rideable and ridePotion ~= nil
+
+    if not needFly and not needRide then
+        print("Пет уже полностью прокачан, пропускаем.")
+        return true
+    end
+
+    game.ReplicatedStorage.API["ToolAPI/Equip"]:InvokeServer(pet.unique, {use_sound_delay = true})
+    task.wait(0.5)
+
+    print("===== AGEUP START =====")
+    print("Pet unique:", pet.unique, "| kind:", pet.kind)
+    print("flyable:", tostring(props.flyable), "-> needFly:", tostring(needFly))
+    print("rideable:", tostring(props.rideable), "-> needRide:", tostring(needRide))
+
+    local success = true
+
+    if needFly then
+        local ok = applyPotion(pet, flyPotion, "Fly")
+        if not ok then success = false end
+    else
+        print("Fly: уже есть или не нужен, пропускаем")
+    end
+
+    if needRide then
+        local ok = applyPotion(pet, ridePotion, "Ride")
+        if not ok then success = false end
+    else
+        print("Ride: уже есть или не нужен, пропускаем")
+    end
+
+    print("===== AGEUP END =====")
+    return success
+end
+
+-- Основной цикл
+local pets = getMegaNeonUnicornsNeedUpgrade()
+local flyPotions = getFlyPotions()
+local ridePotions = getRidePotions()
+
+print(string.format("Найдено: %d питомцев, %d fly зелий, %d ride зелий", #pets, #flyPotions, #ridePotions))
+
+local flyIndex = 1
+local rideIndex = 1
+
+for i, pet in ipairs(pets) do
+    local props = pet.properties or {}
+
+    -- Берём зелье только если оно реально нужно
+    local flyPotion = (not props.flyable) and flyPotions[flyIndex] or nil
+    local ridePotion = (not props.rideable) and ridePotions[rideIndex] or nil
+
+    print(string.format("\n=== ПИТОМЕЦ %d / %d ===", i, #pets))
+    print(string.format("  unique: %s | flyable: %s | rideable: %s",
+        pet.unique, tostring(props.flyable), tostring(props.rideable)))
+
+    local success = ageup(pet, flyPotion, ridePotion)
+
+    -- Сдвигаем индексы только если зелье было использовано
+    if flyPotion then flyIndex += 1 end
+    if ridePotion then rideIndex += 1 end
+
+    if success then
+        print(string.format("Питомец %d обработан успешно!", i))
+    else
+        print(string.format("Питомец %d — ошибка!", i))
+    end
+
+    task.wait(1)
+end
+
+print("Все питомцы обработаны!")
